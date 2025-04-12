@@ -48,7 +48,7 @@ cursor.execute('''
 conn.commit()
 
 # Инициализация бота и диспетчера
-TOKEN = "7836340941:AAHm-DC7dlZ7d-BapdufGPjCF92gv_tCvUc"
+TOKEN = ""
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
@@ -74,9 +74,9 @@ def get_model_keyboard_paginated(page: int = 1):
     return keyboard.as_markup()
 
 # Настройки для Text2ImageAPI
-TEXT2IMAGE_API_URL = "https://api-key.fusionbrain.ai/"
-TEXT2IMAGE_API_KEY = "FF937D741D2A949547451AF874BAC4F5"
-TEXT2IMAGE_SECRET_KEY = "EC234CAFE1250C7BEFBF7AFADA8C8C1C"
+TEXT2IMAGE_API_URL = ""
+TEXT2IMAGE_API_KEY = ""
+TEXT2IMAGE_SECRET_KEY = ""
 text2image_api = Text2ImageAPI(TEXT2IMAGE_API_URL, TEXT2IMAGE_API_KEY, TEXT2IMAGE_SECRET_KEY)
 
 # Инициализация клиента для генерации изображений
