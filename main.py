@@ -48,7 +48,7 @@ cursor.execute('''
 conn.commit()
 
 # Инициализация бота и диспетчера
-TOKEN = ""
+TOKEN = "7836340941:AAHm-DC7dlZ7d-BapdufGPjCF92gv_tCvUc"
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
@@ -122,49 +122,6 @@ async def clear_chat_history(user_id: int):
     """Очищает историю диалога пользователя."""
     cursor.execute("DELETE FROM chat_history WHERE user_id = ?", (user_id,))
     conn.commit()
-
-async def generate_gpt_stream(messages: list, model: str, queue: asyncio.Queue, providers: list):
-    """Генерация ответа в потоке с использованием g4f."""
-    try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Accept-Language': 'en-US,en;q=0.9',
-            'Referer': 'https://www.google.com/',
-            'Origin': 'https://www.google.com/'
-        }
-
-        for provider in providers:
-            try:
-                logger.info(f"🔄 Пробуем провайдера: {provider.__name__}")
-                full_response = ""
-                async for chunk in g4f.ChatCompletion.create_async(
-                        model=model,
-                        messages=messages,
-                        provider=provider,
-                        headers=headers,
-                        timeout=10,
-                        stream=True
-                ):
-                    logger.debug(f"📦 Получен chunk: {chunk} (тип: {type(chunk)})")
-                    if isinstance(chunk, str):
-                        full_response += chunk
-                        await queue.put(chunk)
-                    elif hasattr(chunk, 'content'):
-                        full_response += chunk.content
-                        await queue.put(chunk.content)
-                    else:
-                        logger.warning(f"⚠️ Неизвестный формат chunk: {chunk}")
-                        await queue.put(f"[Неизвестный формат данных: {chunk}]")
-                if full_response.strip():
-                    await queue.put(None)
-                return
-            except Exception as e:
-                logger.error(f"❌ Ошибка в {provider.__name__}: {str(e)}")
-                continue
-        await queue.put(Exception("⚠️ Все провайдеры недоступны. Попробуйте позже."))
-    except Exception as e:
-        logger.error(f"❌ Общая ошибка генерации: {str(e)}")
-        await queue.put(e)
 
 
 @router.message(Command("menu"))
@@ -252,16 +209,12 @@ async def handle_user_message(message: Message):
         user_id = message.from_user.id
         model = await get_user_model(user_id)
 
-        # Уведомление о процессе генерации
-        generating_message = await message.answer("⏳ Создание изображения...")
-
-        # Перевод текста пользователя на английский
-        translator = Translator()
-        translated_text = await translator.translate(message.text, src='ru', dest='en')
-        translated_text = translated_text.text  # Получаем текст перевода
 
         # Если выбрана модель flux, генерируем изображение
         if model.lower().startswith("flux"):
+            translator = Translator()
+            translated_text = await translator.translate(message.text, src='ru', dest='en')
+            translated_text = translated_text.text  # Получаем текст перевода
             await generate_image_with_flux_and_send(message, translated_text, model)
             return
 
@@ -272,10 +225,7 @@ async def handle_user_message(message: Message):
         logger.warning(f"Пользователь {message.from_user.id} заблокировал бота.")
     except Exception as e:
         logger.error(f"Ошибка при обработке сообщения: {e}")
-    finally:
-        # Удаляем сообщение о процессе генерации
-        if generating_message:
-            await generating_message.delete()
+
 
 async def main():
     await dp.start_polling(bot)

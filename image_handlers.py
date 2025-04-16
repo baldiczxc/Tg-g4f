@@ -22,16 +22,6 @@ def create_prompt(user_text: str) -> str:
         logger.error(f"❌ Ошибка генерации промта с помощью g4f: {str(e)}")
         return f"Generate an image based on the following description: {user_text}"
 
-def auto_generate_prompt(image_type: str, style: str = None, details: str = None) -> str:
-    """
-    Автоматически генерирует промт для фотографии на основе типа изображения, стиля и деталей.
-    """
-    prompt = f"Create a {image_type} image"
-    if style:
-        prompt += f" in {style} style"
-    if details:
-        prompt += f" with the following details: {details}"
-    return prompt
 
 async def generate_image_with_flux_and_send(message: Message, translated_prompt: str, model: str):
     """
@@ -40,6 +30,7 @@ async def generate_image_with_flux_and_send(message: Message, translated_prompt:
     generating_message = None
     
     try:
+        generating_message = await message.answer("⏳ Создание изображения...")
         # Создание финального промта
         final_prompt = create_prompt(translated_prompt)
         # Генерация изображения
@@ -49,8 +40,8 @@ async def generate_image_with_flux_and_send(message: Message, translated_prompt:
             response_format="url"
         )
         image_url = response.data[0].url  # Получаем URL изображения
-        image_url = response.data[0].url  # Получаем URL изображения
-
+        if generating_message:
+            await generating_message.delete()
         # Отправляем изображение пользователю
         await message.answer_photo(image_url)
     except Exception as e:

@@ -2,10 +2,12 @@ import asyncio
 import logging
 from aiogram.types import Message
 from aiogram.exceptions import TelegramRetryAfter
-from g4f import ChatCompletion, Provider
+import g4f
+from g4f import Provider
 import time
 
 logger = logging.getLogger(__name__)
+
 
 async def generate_gpt_stream(messages: list, model: str, queue: asyncio.Queue, providers: list):
     """Генерация ответа в потоке с использованием g4f."""
@@ -21,7 +23,7 @@ async def generate_gpt_stream(messages: list, model: str, queue: asyncio.Queue, 
             try:
                 logger.info(f"🔄 Пробуем провайдера: {provider.__name__}")
                 full_response = ""
-                async for chunk in ChatCompletion.create_async(
+                async for chunk in g4f.ChatCompletion.create_async(
                         model=model,
                         messages=messages,
                         provider=provider,
@@ -29,12 +31,16 @@ async def generate_gpt_stream(messages: list, model: str, queue: asyncio.Queue, 
                         timeout=10,
                         stream=True
                 ):
+                    logger.debug(f"📦 Получен chunk: {chunk} (тип: {type(chunk)})")
                     if isinstance(chunk, str):
                         full_response += chunk
                         await queue.put(chunk)
                     elif hasattr(chunk, 'content'):
                         full_response += chunk.content
                         await queue.put(chunk.content)
+                    else:
+                        logger.warning(f"⚠️ Неизвестный формат chunk: {chunk}")
+                        await queue.put(f"[Неизвестный формат данных: {chunk}]")
                 if full_response.strip():
                     await queue.put(None)
                 return
@@ -98,7 +104,6 @@ async def process_user_message(message: Message, model: str, history: list, save
                 await safe_edit(response_text[:4096])
 
         if response_text:
-            logger.info(f"📤 Ответ пользователю: {response_text}")
             await safe_edit(response_text[:4096])
             await save_message_func(message.from_user.id, "bot", response_text)
     except Exception as e:
