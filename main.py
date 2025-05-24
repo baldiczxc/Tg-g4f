@@ -13,7 +13,7 @@ from g4f.client import Client  # Добавлен импорт клиента д
 from image_gen_kandinsky import Text2ImageAPI
 from image_handlers import generate_image_with_flux_and_send
 from text_handlers import process_user_message
-from googletrans import Translator  # Импортируем библиотеку для перевода
+from deep_translator import MyMemoryTranslator  # Бесплатный переводчик без лимитов
 
 # Настройка логирования
 logging.basicConfig(
@@ -209,12 +209,9 @@ async def handle_user_message(message: Message):
         user_id = message.from_user.id
         model = await get_user_model(user_id)
 
-
         # Если выбрана модель flux, генерируем изображение
         if model.lower().startswith("flux"):
-            translator = Translator()
-            translated_text = await translator.translate(message.text, src='ru', dest='en')
-            translated_text = translated_text.text  # Получаем текст перевода
+            translated_text = MyMemoryTranslator(source='ru', target='en').translate(message.text)
             await generate_image_with_flux_and_send(message, translated_text, model)
             return
 
