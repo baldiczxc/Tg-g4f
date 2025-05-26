@@ -8,12 +8,11 @@ from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardB
 from aiogram.exceptions import TelegramForbiddenError
 from aiogram.utils.keyboard import InlineKeyboardBuilder
 from aiogram.fsm.storage.memory import MemoryStorage
-import g4f
 from g4f.client import Client  # Добавлен импорт клиента для генерации изображений
 from image_gen_kandinsky import Text2ImageAPI
 from image_handlers import generate_image_with_flux_and_send
 from text_handlers import process_user_message
-from deep_translator import GoogleTranslator
+from translate import Translator
 
 # Настройка логирования
 logging.basicConfig(
@@ -211,9 +210,8 @@ async def handle_user_message(message: Message):
 
         # Если выбрана модель flux, генерируем изображение
         if model.lower().startswith("flux"):
-            translated_text = GoogleTranslator(source='ru', target='en').translate(text=message.text)
-
-            print(translated_text)
+            translator = Translator(to_lang="en")
+            translated_text = translator.translate(message.text)
             await generate_image_with_flux_and_send(message, translated_text, model)
             return
 
