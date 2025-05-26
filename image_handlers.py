@@ -14,7 +14,7 @@ def create_prompt(user_text: str) -> str:
         client = Client()
         response = client.chat.completions.create(
             model="gpt-4o-mini",
-            messages=[{"role": "user", "content": f"Create a detailed image generation prompt based on: {user_text}"}],
+            messages=[{"role": "user", "content": f"Translate into English and create a detailed promt for image generation based on and send only promt: {user_text}"}],
             web_search=False
         )
         return response.choices[0].message.content

@@ -12,7 +12,7 @@ from g4f.client import Client  # Добавлен импорт клиента д
 from image_gen_kandinsky import Text2ImageAPI
 from image_handlers import generate_image_with_flux_and_send
 from text_handlers import process_user_message
-from translate import Translator
+from googletrans import Translator
 
 # Настройка логирования
 logging.basicConfig(
@@ -47,7 +47,7 @@ cursor.execute('''
 conn.commit()
 
 # Инициализация бота и диспетчера
-TOKEN = ""
+TOKEN = "7836340941:AAEbWid0dlRGb2LMsBUc3CLL72JXTJ5vzUA"
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
@@ -210,9 +210,7 @@ async def handle_user_message(message: Message):
 
         # Если выбрана модель flux, генерируем изображение
         if model.lower().startswith("flux"):
-            translator = Translator(to_lang="en")
-            translated_text = translator.translate(message.text)
-            await generate_image_with_flux_and_send(message, translated_text, model)
+            await generate_image_with_flux_and_send(message, message.text, model)
             return
 
         # Для остальных моделей обрабатываем текстовое сообщение
