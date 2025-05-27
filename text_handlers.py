@@ -8,6 +8,7 @@ import time
 
 logger = logging.getLogger(__name__)
 
+BLACKBOX_LIMIT_MSG = "You have reached your request limit for the hour."
 
 async def generate_gpt_stream(messages: list, model: str, queue: asyncio.Queue, providers: list):
     """Генерация ответа в потоке с использованием g4f."""
@@ -32,6 +33,14 @@ async def generate_gpt_stream(messages: list, model: str, queue: asyncio.Queue, 
                         stream=True
                 ):
                     logger.debug(f"📦 Получен chunk: {chunk} (тип: {type(chunk)})")
+                    # --- Проверка лимита Blackbox ---
+                    if isinstance(chunk, str) and BLACKBOX_LIMIT_MSG in chunk:
+                        await queue.put(Exception("⚠️ Произошла ошибка при генерации ответа, попробуйте позже\nИли выберите другую модель"))
+                        return
+                    if hasattr(chunk, 'content') and chunk.content and BLACKBOX_LIMIT_MSG in chunk.content:
+                        await queue.put(Exception("⚠️ Произошла ошибка при генерации ответа, попробуйте позже\nИли выберите другую модель"))
+                        return
+                    # ---
                     if isinstance(chunk, str):
                         full_response += chunk
                         await queue.put(chunk)
@@ -41,6 +50,11 @@ async def generate_gpt_stream(messages: list, model: str, queue: asyncio.Queue, 
                     else:
                         logger.warning(f"⚠️ Неизвестный формат chunk: {chunk}")
                         await queue.put(f"[Неизвестный формат данных: {chunk}]")
+                # --- Проверка лимита Blackbox в полном ответе ---
+                if BLACKBOX_LIMIT_MSG in full_response:
+                    await queue.put(Exception("⚠️ Произошла ошибка при генерации ответа, попробуйте позже\nИли выберите другую модель"))
+                    return
+                # ---
                 if full_response.strip():
                     await queue.put(None)
                 return
