@@ -22,46 +22,52 @@ async def generate_gpt_stream(messages: list, model: str, queue: asyncio.Queue, 
 
         for provider in providers:
             try:
-                logger.info(f"🔄 Пробуем провайдера: {provider.__name__}")
                 full_response = ""
                 async for chunk in g4f.ChatCompletion.create_async(
                         model=model,
                         messages=messages,
-                        provider=provider,
+                        provider=g4f.Provider.Blackbox,
                         headers=headers,
                         timeout=10,
                         stream=True
                 ):
                     logger.debug(f"📦 Получен chunk: {chunk} (тип: {type(chunk)})")
-                    # --- Проверка лимита Blackbox ---
-                    if isinstance(chunk, str) and BLACKBOX_LIMIT_MSG in chunk:
-                        await queue.put(Exception("⚠️ Произошла ошибка при генерации ответа, попробуйте позже\nИли выберите другую модель"))
-                        return
-                    if hasattr(chunk, 'content') and chunk.content and BLACKBOX_LIMIT_MSG in chunk.content:
-                        await queue.put(Exception("⚠️ Произошла ошибка при генерации ответа, попробуйте позже\nИли выберите другую модель"))
-                        return
-                    # ---
+                    
+                    # Обработка текстовых чанков
                     if isinstance(chunk, str):
+                        # Проверка лимита Blackbox
+                        if BLACKBOX_LIMIT_MSG in chunk:
+                            await queue.put(Exception("⚠️ Произошла ошибка при генерации ответа, попробуйте позже\nИли выберите другую модель"))
+                            return
                         full_response += chunk
                         await queue.put(chunk)
-                    elif hasattr(chunk, 'content'):
-                        full_response += chunk.content
-                        await queue.put(chunk.content)
-                    else:
-                        logger.warning(f"⚠️ Неизвестный формат chunk: {chunk}")
-                        await queue.put(f"[Неизвестный формат данных: {chunk}]")
-                # --- Проверка лимита Blackbox в полном ответе ---
+                    
+                    # Обработка объектов с атрибутом content
+                    elif hasattr(chunk, 'content') and chunk.content:
+                        content = chunk.content
+                        # Проверка лимита Blackbox
+                        if BLACKBOX_LIMIT_MSG in content:
+                            await queue.put(Exception("⚠️ Произошла ошибка при генерации ответа, попробуйте позже\nИли выберите другую модель"))
+                            return
+                        full_response += content
+                        await queue.put(content)
+                    
+                
+                # Финальная проверка лимита
                 if BLACKBOX_LIMIT_MSG in full_response:
                     await queue.put(Exception("⚠️ Произошла ошибка при генерации ответа, попробуйте позже\nИли выберите другую модель"))
                     return
-                # ---
+                
                 if full_response.strip():
                     await queue.put(None)
                 return
+                
             except Exception as e:
                 logger.error(f"❌ Ошибка в {provider.__name__}: {str(e)}")
                 continue
+        
         await queue.put(Exception("⚠️ Все провайдеры недоступны. Попробуйте позже."))
+    
     except Exception as e:
         logger.error(f"❌ Общая ошибка генерации: {str(e)}")
         await queue.put(e)
@@ -73,7 +79,7 @@ async def process_user_message(message: Message, model: str, history: list, save
     user_message = message.text
     await save_message_func(message.from_user.id, "user", user_message)
 
-    messages = [{"role": "system", "content": "Всегда отвечай только на русском языке."}]
+    messages = [{"role": "system", "content": "Ты отвечаешь в телеграмме, используй форматирование как в телеграмме"}]
     for msg_type, content in history:
         role = "user" if msg_type == "user" else "assistant"
         messages.append({"role": role, "content": content})

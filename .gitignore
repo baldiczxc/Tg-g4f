@@ -1,0 +1,4 @@
+bot.db
+__pycache__/image_gen_kandinsky.cpython-312.pyc
+__pycache__/image_handlers.cpython-312.pyc
+__pycache__/text_handlers.cpython-312.pyc
