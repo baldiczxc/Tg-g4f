@@ -1,4 +1,4 @@
-import asyncio
+
 import logging
 from aiogram.types import Message
 from g4f.client import Client

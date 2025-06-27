@@ -1,17 +1,17 @@
 import logging
+import time
 import asyncio
 import sqlite3
 from aiogram import Bot, Dispatcher, Router, F
 from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, ReplyKeyboardMarkup, KeyboardButton, InputFile, FSInputFile
 from aiogram.exceptions import TelegramForbiddenError
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.utils.keyboard import InlineKeyboardBuilder, InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.fsm.storage.memory import MemoryStorage
 from g4f.client import Client  # Добавлен импорт клиента для генерации изображений
 from image_gen_kandinsky import Text2ImageAPI
 from image_handlers import generate_image_with_flux_and_send
 from text_handlers import process_user_message
-from g4f import Provider  # Добавить импорт Provider
 
 # Настройка логирования
 logging.basicConfig(
@@ -46,7 +46,7 @@ cursor.execute('''
 conn.commit()
 
 # Инициализация бота и диспетчера
-TOKEN = ""
+TOKEN = "7836340941:AAEbWid0dlRGb2LMsBUc3CLL72JXTJ5vzUA"
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
@@ -54,8 +54,8 @@ router = Router()
 dp.include_router(router)
 
 # Список доступных моделей
-TEXT_MODELS = ["llama-3.3-70b", "deepseek-v3", "deepseek-r1", "GPT-4o", "gpt-4o-mini",]
-IMAGE_MODELS = ["flux","flux-pro", "flux-dev", "flux-schnell", "midjourney" ]
+TEXT_MODELS = ["llama-3.3-70b", "deepseek-v3", "deepseek-r1", "gpt-4o", "gpt-4o-mini", "gpt-4.1"]
+IMAGE_MODELS = ["flux","flux-pro", "flux-dev", "flux-schnell", "dall-e", "gpt-image"]
 
 def get_model_keyboard_paginated(page: int = 1):
     """Создает инлайн-клавиатуру для выбора моделей с пагинацией."""
@@ -84,7 +84,6 @@ g4f_client = Client()
 main_menu = ReplyKeyboardMarkup(
     keyboard=[
         [KeyboardButton(text="Выбрать модель 🤖")],
-        [KeyboardButton(text="О боте ℹ️")],
     ],
     resize_keyboard=True
 )
@@ -155,20 +154,50 @@ async def paginate_models(callback: CallbackQuery):
 @router.callback_query(F.data.startswith("model_"))
 async def select_model(callback: CallbackQuery):
     """Обработка выбора модели через инлайн-кнопку."""
-    model_name = callback.data.split("_")[1]
+    model_name = callback.data.split("_", 1)[1]
     await set_user_model(callback.from_user.id, model_name)
     await callback.message.edit_text(f"✅ Вы выбрали модель: {model_name}")
     await callback.answer("Модель изменена!")
+    # Не спрашиваем про промт сразу!
 
-@router.message(F.text == "О боте ℹ️")
-async def about_bot(message: Message):
-    """Обработка информации о боте."""
-    await message.answer(
-        "🤖 Я бот с искусственным интеллектом!\n"
-        "Сделано: baldiczxc\n"
-        "Версия: 1.5\n"
-        "Полностью работает на api"
+def get_prompt_choice_keyboard():
+    """Инлайн-клавиатура для выбора способа генерации промта."""
+    keyboard = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="Сделать промт", callback_data="prompt_auto"),
+             InlineKeyboardButton(text="Использовать мой текст", callback_data="prompt_user")]
+        ]
     )
+    return keyboard
+
+# --- Простая память для хранения состояния пользователя (user_id: 'wait_prompt_choice' или None) ---
+user_states = {}
+user_texts = {}
+
+@router.callback_query(F.data.in_(["prompt_auto", "prompt_user"]))
+async def prompt_choice_handler(callback: CallbackQuery):
+    """Обработка выбора способа генерации промта для изображения."""
+    user_id = callback.from_user.id
+    model = await get_user_model(user_id)
+    # Получаем текст, который пользователь до этого отправил
+    user_text = user_texts.pop(user_id, None)
+    # Сначала отвечаем на callback, чтобы не было ошибки TelegramBadRequest
+    await callback.answer()
+    # Затем удаляем сообщение с выбором
+    try:
+        await callback.message.delete()
+    except Exception:
+        pass
+    if not user_text:
+        await callback.message.answer("Пожалуйста, сначала отправьте описание для изображения.")
+        return
+    if callback.data == "prompt_auto":
+        # Генерируем промт автоматически
+        await generate_image_with_flux_and_send(callback.message, user_text, model)
+    else:
+        # Используем текст пользователя как промт
+        await generate_image_with_flux_and_send(callback.message, user_text, model)
+    user_states[user_id] = None
 
 @router.message(Command("delete_history"))
 async def clear_history(message: Message):
@@ -181,7 +210,7 @@ async def cmd_start(message: Message):
     """Обработка команды /start."""
     await set_user_model(message.from_user.id, "GPT-4o")
     await message.answer(
-        "Привет! Я бот, использующий нейросети для ответов.\nИспользуйте /menu или кнопку ниже ⬇️",
+        "Привет! Я бот, использующий нейросети для ответов.\nИспользуйте кнопку ниже ⬇️",
         reply_markup=main_menu
     )
 
@@ -202,21 +231,23 @@ async def handle_user_message(message: Message):
     """
     Обработка текстового сообщения.
     """
-    generating_message = None
     try:
         user_id = message.from_user.id
         model = await get_user_model(user_id)
-
-        # Если выбрана модель flux, генерируем изображение
-        if model.lower().startswith("flux"):
-            await generate_image_with_flux_and_send(message, message.text, model)
-            return
-
+        # Если выбрана модель для изображений
+        if model.lower() in IMAGE_MODELS:
+            # Если пользователь только что выбрал модель или еще не выбрал способ генерации промта
+            if user_states.get(user_id) != 'wait_prompt_choice':
+                user_states[user_id] = 'wait_prompt_choice'
+                user_texts[user_id] = message.text
+                await message.answer(
+                    "Как сгенерировать промт для изображения?",
+                    reply_markup=get_prompt_choice_keyboard()
+                )
+                return
         # Для остальных моделей обрабатываем текстовое сообщение
         history = await get_chat_history(user_id, limit=10)
-        # Передаем список провайдеров для повторных попыток
-        providers = [Provider.Blackbox, Provider.Bing, Provider.You, Provider.Ails, Provider.ChatgptAi]
-        await process_user_message(message, model, history, save_message, providers)
+        await process_user_message(message, model, history, save_message)
     except TelegramForbiddenError:
         logger.warning(f"Пользователь {message.from_user.id} заблокировал бота.")
     except Exception as e:
