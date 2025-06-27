@@ -12,7 +12,7 @@ from g4f.client import Client  # Добавлен импорт клиента д
 from image_gen_kandinsky import Text2ImageAPI
 from image_handlers import generate_image_with_flux_and_send
 from text_handlers import process_user_message
-from googletrans import Translator
+from g4f import Provider  # Добавить импорт Provider
 
 # Настройка логирования
 logging.basicConfig(
@@ -215,7 +215,9 @@ async def handle_user_message(message: Message):
 
         # Для остальных моделей обрабатываем текстовое сообщение
         history = await get_chat_history(user_id, limit=10)
-        await process_user_message(message, model, history, save_message)
+        # Передаем список провайдеров для повторных попыток
+        providers = [Provider.Blackbox, Provider.Bing, Provider.You, Provider.Ails, Provider.ChatgptAi]
+        await process_user_message(message, model, history, save_message, providers)
     except TelegramForbiddenError:
         logger.warning(f"Пользователь {message.from_user.id} заблокировал бота.")
     except Exception as e:

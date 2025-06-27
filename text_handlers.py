@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 BLACKBOX_LIMIT_MSG = "You have reached your request limit for the hour."
 
 async def generate_gpt_stream(messages: list, model: str, queue: asyncio.Queue, providers: list):
-    """Генерация ответа в потоке с использованием g4f."""
+    """Генерация ответа в потоке с использованием g4f, с попытками до 5 провайдеров."""
     try:
         headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
@@ -20,13 +20,17 @@ async def generate_gpt_stream(messages: list, model: str, queue: asyncio.Queue, 
             'Origin': 'https://www.google.com/'
         }
 
-        for provider in providers:
+        max_attempts = 5
+        attempt = 0
+        provider_count = len(providers)
+        while attempt < max_attempts:
+            provider = providers[attempt % provider_count]
             try:
                 full_response = ""
                 async for chunk in g4f.ChatCompletion.create_async(
                         model=model,
                         messages=messages,
-                        provider=g4f.Provider.Blackbox,
+                        provider=provider,
                         headers=headers,
                         timeout=10,
                         stream=True
@@ -37,8 +41,8 @@ async def generate_gpt_stream(messages: list, model: str, queue: asyncio.Queue, 
                     if isinstance(chunk, str):
                         # Проверка лимита Blackbox
                         if BLACKBOX_LIMIT_MSG in chunk:
-                            await queue.put(Exception("⚠️ Произошла ошибка при генерации ответа, попробуйте позже\nИли выберите другую модель"))
-                            return
+                            logger.warning(f"⚠️ Лимит Blackbox, попытка {attempt+1}")
+                            break
                         full_response += chunk
                         await queue.put(chunk)
                     
@@ -47,26 +51,30 @@ async def generate_gpt_stream(messages: list, model: str, queue: asyncio.Queue, 
                         content = chunk.content
                         # Проверка лимита Blackbox
                         if BLACKBOX_LIMIT_MSG in content:
-                            await queue.put(Exception("⚠️ Произошла ошибка при генерации ответа, попробуйте позже\nИли выберите другую модель"))
-                            return
+                            logger.warning(f"⚠️ Лимит Blackbox, попытка {attempt+1}")
+                            break
                         full_response += content
                         await queue.put(content)
-                    
                 
                 # Финальная проверка лимита
                 if BLACKBOX_LIMIT_MSG in full_response:
-                    await queue.put(Exception("⚠️ Произошла ошибка при генерации ответа, попробуйте позже\nИли выберите другую модель"))
-                    return
+                    logger.warning(f"⚠️ Лимит Blackbox (финальная проверка), попытка {attempt+1}")
+                    attempt += 1
+                    continue
                 
                 if full_response.strip():
                     await queue.put(None)
-                return
+                    return
+                else:
+                    attempt += 1
+                    continue
                 
             except Exception as e:
-                logger.error(f"❌ Ошибка в {provider.__name__}: {str(e)}")
+                logger.error(f"❌ Ошибка в {getattr(provider, '__name__', str(provider))}: {str(e)}")
+                attempt += 1
                 continue
         
-        await queue.put(Exception("⚠️ Все провайдеры недоступны. Попробуйте позже."))
+        await queue.put(Exception("⚠️ Все провайдеры недоступны или лимит исчерпан. Попробуйте позже."))
     
     except Exception as e:
         logger.error(f"❌ Общая ошибка генерации: {str(e)}")
@@ -104,7 +112,9 @@ async def process_user_message(message: Message, model: str, history: list, save
 
     try:
         queue = asyncio.Queue()
-        asyncio.create_task(generate_gpt_stream(messages, model, queue, [Provider.Blackbox]))
+        # Передаем список провайдеров, можно добавить свои, если нужно
+        providers = [Provider.Blackbox, Provider.Bing, Provider.You, Provider.Ails, Provider.ChatgptAi]
+        asyncio.create_task(generate_gpt_stream(messages, model, queue, providers))
 
         while True:
             try:
