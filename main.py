@@ -1,5 +1,4 @@
 import logging
-import time
 import asyncio
 import sqlite3
 from aiogram import Bot, Dispatcher, Router, F
