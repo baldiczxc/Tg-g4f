@@ -46,7 +46,7 @@ cursor.execute('''
 conn.commit()
 
 # Инициализация бота и диспетчера
-TOKEN = "7836340941:AAEbWid0dlRGb2LMsBUc3CLL72JXTJ5vzUA"
+TOKEN = ""
 bot = Bot(token=TOKEN)
 storage = MemoryStorage()
 dp = Dispatcher(storage=storage)
