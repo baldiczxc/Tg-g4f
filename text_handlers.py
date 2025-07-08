@@ -92,7 +92,7 @@ async def process_user_message(message: Message, model: str, history: list, save
     async def safe_edit(text: str):
         nonlocal last_update_time
         try:
-            await response_message.edit_text(text[:4096])
+            await response_message.edit_text(text[:4096], parse_mode='Markdown')
             last_update_time = time.time()
         except TelegramRetryAfter as e:
             logger.warning(f"⏳ Превышен лимит Telegram, ждем {e.retry_after} сек.")
